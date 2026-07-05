@@ -1,0 +1,64 @@
+# Sync the PCC network invitation from this kit into target repos as PULL REQUESTS.
+# Manual dispatch only — opening PRs across repos is deliberate, never automatic.
+#
+# To use: copy this file into THIS kit repo's .github/workflows/ and set:
+#   - secrets.PCC_SYNC_TOKEN : a GitHub PAT (or fine-grained token) with contents:write
+#     + pull-requests:write on every target repo. The default GITHUB_TOKEN cannot push
+#     to *other* repositories.
+#   - sync/repos.json        : each entry needs a `github` field ("owner/name").
+name: Sync PCC Network Invitation
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry-run (report only, no PRs)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout kit
+        uses: actions/checkout@v4
+        with: { path: kit }
+
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+
+      - name: Sync into each target repo
+        env:
+          GH_TOKEN: ${{ secrets.PCC_SYNC_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          slugs=$(node -e 'for (const r of (require("./kit/sync/repos.json").repos||[])) if (r.github) console.log(r.github)')
+          for slug in $slugs; do
+            echo "::group::$slug"
+            work="target-${slug//\//-}"
+            git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${slug}.git" "$work"
+            node -e "const fs=require('fs');fs.writeFileSync('one.json',JSON.stringify({defaults:require('./kit/sync/repos.json').defaults,repos:[{path:process.cwd()+'/'+process.argv[1]}]}))" "$work"
+            if [ "$DRY_RUN" = "true" ]; then
+              node kit/sync/pcc-sync.mjs --repos one.json --kit kit
+            else
+              node kit/sync/pcc-sync.mjs --repos one.json --kit kit --apply
+              ( cd "$work"
+                git config user.name  "pcc-network-kit[bot]"
+                git config user.email "pcc-network-kit@users.noreply.github.com"
+                git checkout -b chore/pcc-network-kit
+                git add PCC-NETWORK.md pcc.json AGENTS.md README.md || true
+                if git commit -m "chore: add PCC network invitation (pcc-network-kit)"; then
+                  git push -u origin chore/pcc-network-kit
+                  gh pr create --repo "$slug" --head chore/pcc-network-kit \
+                    --title "Add PCC network invitation" \
+                    --body "Adds PCC-NETWORK.md + pcc.json and a managed pointer block. Informational and opt-in; synced from pcc-network-kit. Please review before merge." || true
+                else
+                  echo "no changes for $slug"
+                fi )
+            fi
+            echo "::endgroup::"
+          done
