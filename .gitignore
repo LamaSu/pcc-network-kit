@@ -1,0 +1,4 @@
+# Transient enumeration outputs from the sync tooling (regenerate with gh repo list)
+sync/lamasu-repos.json
+sync/kamino-repos.json
+sync/repos.public.json

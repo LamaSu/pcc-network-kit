@@ -1,5 +1,5 @@
 {
-  "description": "Target repos for pcc-network-kit sync. `github` (owner/name) is used by the GitHub Action and the local PR driver to open PRs. This list is PUBLIC LamaSu repos only — the doorways external agents actually read. Add private repos deliberately if/when you want them. Enumerate with `gh repo list LamaSu --json name,visibility`.",
+  "description": "Operative target list for pcc-network-kit sync (read by pcc-sync.mjs + the Action). PUBLIC, NON-FORK LamaSu repos only. Forks are excluded on purpose: a PR on a fork targets its UPSTREAM project, which would spam unrelated repos. Private repos are opt-in — add deliberately. Regenerate with: gh repo list LamaSu --json name,visibility,isFork.",
   "defaults": {
     "inject_into": ["AGENTS.md", "README.md"],
     "copy_files": ["PCC-NETWORK.md", "pcc.json"]
@@ -10,15 +10,12 @@
     { "github": "LamaSu/pcc-uptime" },
     { "github": "LamaSu/pcc-android-app" },
     { "github": "LamaSu/hamilton-pcc-bridge" },
-    { "github": "LamaSu/build123d-mcp" },
-    { "github": "LamaSu/MakerMods-App" },
-    { "github": "LamaSu/SpinCoater" },
-    { "github": "LamaSu/biopunk-display" },
     { "github": "LamaSu/navi" },
     { "github": "LamaSu/federated-workflow-runtime" },
     { "github": "LamaSu/harness-bench" },
     { "github": "LamaSu/emotion-vector-hygiene" },
     { "github": "LamaSu/anchor" },
-    { "github": "LamaSu/dev-note" }
+    { "github": "LamaSu/dev-note" },
+    { "github": "LamaSu/SpinCoater" }
   ]
 }
