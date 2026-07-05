@@ -22,28 +22,31 @@ this an invitation, not prompt injection.
 | `templates/pcc.json` | repo root | machine-readable manifest (agents parse this) |
 | `templates/AGENTS.snippet.md` | managed block in `AGENTS.md` / `README.md` | short pointer to the two files above |
 | `templates/mcp-instructions.snippet.md` | an MCP server's `instructions` field | same invitation for agents that connect over MCP |
-| `sync/pcc-sync.mjs` | — | fans templates into target repos (dry-run by default) |
-| `sync/sync-pcc-network.yml` | `.github/workflows/` of this repo | opens PRs into target repos (manual dispatch) |
+| `sync/pcc-sync.mjs` | — | engine: fans templates into target repos (dry-run by default) |
+| `sync/open-prs.sh` | — | token-free local driver: clone → apply → one PR per repo (uses your `gh` auth) |
+| `.github/workflows/sync-pcc-network.yml` | this repo's CI | opens PRs into target repos (manual dispatch; needs `PCC_SYNC_TOKEN`) |
 | `sync/repos.json` | — | the target list |
 
 ## Use it
 
 ```bash
-# 1. curate the target list
+# 1. curate the target list (repos.json uses "github": "owner/name" entries)
 $EDITOR sync/repos.json
 
-# 2. see exactly what would change — writes nothing
-node sync/pcc-sync.mjs
+# 2. see exactly what would change across every target — clones + reports, writes nothing
+bash sync/open-prs.sh
 
-# 3. write the files + managed blocks locally
-node sync/pcc-sync.mjs --apply
-
-# 4. (optional) also branch + commit in each repo — never pushes
-node sync/pcc-sync.mjs --apply --commit
+# 3. open one PR per repo (clone → apply → branch/commit/push → PR) using your gh auth
+bash sync/open-prs.sh --apply
 ```
 
-For cross-repo **pull requests**, use the GitHub Action (`sync/sync-pcc-network.yml`) —
-manual dispatch, needs a `PCC_SYNC_TOKEN` secret. It defaults to dry-run.
+`open-prs.sh` is the token-free local path — it uses your existing `gh` login and never
+touches your working trees. For hands-off CI runs, the GitHub Action
+(`.github/workflows/sync-pcc-network.yml`, manual dispatch, dry-run default) does the same
+but needs a `PCC_SYNC_TOKEN` secret with cross-repo push + PR rights.
+
+`sync/pcc-sync.mjs` is the underlying engine — call it directly with a manifest whose
+entries carry local `path`s to apply into checkouts you already have.
 
 ## The single-source rule
 
