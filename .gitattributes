@@ -1,0 +1,4 @@
+# Normalize line endings to LF so shell scripts and JS run on any checkout / CI runner
+* text=auto eol=lf
+*.sh text eol=lf
+*.mjs text eol=lf
