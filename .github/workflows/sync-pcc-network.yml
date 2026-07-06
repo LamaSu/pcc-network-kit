@@ -35,30 +35,40 @@ jobs:
           GH_TOKEN: ${{ secrets.PCC_SYNC_TOKEN }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          set -euo pipefail
+          set -uo pipefail            # NOT -e: one repo's failure must not abort the rest
           slugs=$(node -e 'for (const r of (require("./kit/sync/repos.json").repos||[])) if (r.github) console.log(r.github)')
+          ok=0; failed=""
           for slug in $slugs; do
             echo "::group::$slug"
             work="target-${slug//\//-}"
-            git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${slug}.git" "$work"
+            if ! git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${slug}.git" "$work" 2>&1; then
+              echo "::warning::clone failed for $slug (PAT may lack access)"; failed="$failed $slug"; echo "::endgroup::"; continue
+            fi
             node -e "const fs=require('fs');fs.writeFileSync('one.json',JSON.stringify({defaults:require('./kit/sync/repos.json').defaults,repos:[{path:process.cwd()+'/'+process.argv[1]}]}))" "$work"
             if [ "$DRY_RUN" = "true" ]; then
-              node kit/sync/pcc-sync.mjs --repos one.json --kit kit
+              node kit/sync/pcc-sync.mjs --repos one.json --kit kit || { echo "::warning::dry-run error for $slug"; failed="$failed $slug"; }
+              echo "::endgroup::"; continue
+            fi
+            node kit/sync/pcc-sync.mjs --repos one.json --kit kit --apply
+            git -C "$work" config user.name  "pcc-network-kit[bot]"
+            git -C "$work" config user.email "pcc-network-kit@users.noreply.github.com"
+            git -C "$work" checkout -B chore/pcc-network-kit
+            git -C "$work" add PCC-NETWORK.md pcc.json AGENTS.md README.md 2>/dev/null || true
+            if git -C "$work" commit -m "chore: sync PCC network invitation (pcc-network-kit)" 2>/dev/null; then
+              if git -C "$work" push -u origin chore/pcc-network-kit --force-with-lease 2>&1; then
+                gh pr create --repo "$slug" --head chore/pcc-network-kit \
+                  --title "Sync PCC network invitation" \
+                  --body "Adds/updates PCC-NETWORK.md + pcc.json and a managed AGENTS.md pointer block. Informational and opt-in; synced from pcc-network-kit. Please review before merge." 2>/dev/null \
+                  || echo "  ($slug: PR already open)"
+                ok=$((ok+1))
+              else
+                echo "::warning::push denied for $slug — PAT needs contents:write + pull-requests:write on it"; failed="$failed $slug"
+              fi
             else
-              node kit/sync/pcc-sync.mjs --repos one.json --kit kit --apply
-              ( cd "$work"
-                git config user.name  "pcc-network-kit[bot]"
-                git config user.email "pcc-network-kit@users.noreply.github.com"
-                git checkout -b chore/pcc-network-kit
-                git add PCC-NETWORK.md pcc.json AGENTS.md README.md || true
-                if git commit -m "chore: add PCC network invitation (pcc-network-kit)"; then
-                  git push -u origin chore/pcc-network-kit
-                  gh pr create --repo "$slug" --head chore/pcc-network-kit \
-                    --title "Add PCC network invitation" \
-                    --body "Adds PCC-NETWORK.md + pcc.json and a managed pointer block. Informational and opt-in; synced from pcc-network-kit. Please review before merge." || true
-                else
-                  echo "no changes for $slug"
-                fi )
+              echo "  ($slug: no changes)"; ok=$((ok+1))
             fi
             echo "::endgroup::"
           done
+          echo "----- summary -----"
+          echo "ok/no-change: $ok    failed:${failed:- none}"
+          if [ -n "$failed" ]; then echo "::error::These repos failed — add them to the PCC_SYNC_TOKEN PAT (contents + PRs write):$failed"; exit 1; fi
